@@ -1,0 +1,28 @@
+{
+  "name": "react-ebook",
+  "private": false,
+  "version": "0.0.1",
+  "author": "Lennart Kerkvliet",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@zip.js/zip.js": "^2.7.57"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.10",
+    "typescript": "^5.8.2",
+    "tsup": "^8.4.0"
+  }
+}

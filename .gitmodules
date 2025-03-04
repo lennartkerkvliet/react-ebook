@@ -1,0 +1,4 @@
+[submodule "src/vendor/foliate-js"]
+	path = src/vendor/foliate-js
+	url = git@github.com:johnfactotum/foliate-js.git
+	commit = e2014ee7532310b8a3c60d10b84c58e6344ae4e4
