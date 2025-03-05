@@ -1,9 +1,15 @@
 {
-  "name": "react-ebook",
+  "name": "react-ebookjs",
   "private": false,
   "version": "0.0.1",
   "author": "Lennart Kerkvliet",
   "license": "MIT",
+  "description": "A minimal, unstyled React component library for rendering and interacting with ebooks in web applications.",
+  "keywords": ["react", "ebook", "reader", "epub", "pdf", "mobi"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lennartkerkvliet/react-ebook.git"
+  },
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -11,7 +17,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@zip.js/zip.js": "^2.4.0"

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Reader, ReaderContent, ReaderNext, ReaderPrevious, loadEPUB, Book, useSearch, useBookNavigator } from 'react-ebook'
+import { Reader, ReaderContent, ReaderNext, ReaderPrevious, loadEPUB, Book, useSearch, useBookNavigator } from 'react-ebookjs'
 
 function App() {
   const [book, setBook] = useState<Book | null>(null);

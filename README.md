@@ -21,7 +21,7 @@ A minimal, unstyled React component library for rendering and interacting with e
 ## Installation
 
 ```bash
-npm install react-ebook
+npm install react-ebookjs
 ```
 
 ## Usage
@@ -34,7 +34,7 @@ import {
   ReaderNext, 
   ReaderPrevious, 
   loadEPUB 
-} from 'react-ebook';
+} from 'react-ebookjs';
 
 function EbookReader() {
   const [book, setBook] = useState(null);
