@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Reader, ReaderContent, ReaderNext, ReaderPrevious, loadEPUB, Book } from 'react-ebook'
+import { Reader, ReaderContent, ReaderNext, ReaderPrevious, loadEPUB, Book, useSearch, useBookNavigator } from 'react-ebook'
 
 function App() {
   const [book, setBook] = useState<Book | null>(null);
@@ -11,6 +11,10 @@ function App() {
   const [justify, setJustify] = useState(true);
   const [hyphenate, setHyphenate] = useState(true);
   const [flow, setFlow] = useState<"paginated" | "scrolled">("paginated");
+  const [progress, setProgress] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [showTOC, setShowTOC] = useState(false);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -146,9 +150,65 @@ function App() {
                 </button>
               </div>
             </div>
+            
+            <div className="option-group">
+              <label>Search</label>
+              <div className="search-control">
+                <button 
+                  title="Toggle Search"
+                  className={showSearch ? 'active' : ''} 
+                  onClick={() => {
+                    setShowSearch(!showSearch);
+                    if (showTOC) setShowTOC(false);
+                  }}
+                >
+                  <span className="icon">🔍</span>
+                </button>
+              </div>
+            </div>
+            
+            <div className="option-group">
+              <label>Contents</label>
+              <div className="toc-control">
+                <button 
+                  title="Toggle Table of Contents"
+                  className={showTOC ? 'active' : ''} 
+                  onClick={() => {
+                    setShowTOC(!showTOC);
+                    if (showSearch) setShowSearch(false);
+                  }}
+                >
+                  <span className="icon">≡</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          <Reader book={book}>
+          <Reader 
+            book={book} 
+            progress={progress}
+            onProgressChange={setProgress}
+          >
+            {showSearch && (
+              <div className="search-container">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search in book..."
+                  className="search-input"
+                />
+                <SearchResults query={searchQuery} />
+              </div>
+            )}
+            
+            {showTOC && (
+              <div className="toc-container">
+                <h3>Table of Contents</h3>
+                <TableOfContents toc={book.toc} />
+              </div>
+            )}
+            
             <div className="reader-container">
               <ReaderContent 
                 fontSize={fontSize} 
@@ -160,6 +220,19 @@ function App() {
             </div>
             <div className="reader-controls">
               <ReaderPrevious>Previous Page</ReaderPrevious>
+              <div className="progress-slider-container">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.001"
+                  value={progress}
+                  onChange={(e) => setProgress(parseFloat(e.target.value))}
+                  className="progress-slider"
+                  title={`${Math.round(progress * 100)}%`}
+                />
+                <div className="progress-label">{Math.round(progress * 100)}%</div>
+              </div>
               <ReaderNext>Next Page</ReaderNext>
             </div>
           </Reader>
@@ -167,6 +240,94 @@ function App() {
           <button className="upload-button" onClick={() => setBook(null)}>Upload Another Book</button>
         </>
       )}
+    </div>
+  );
+}
+
+// Search Results component to display search results
+function SearchResults({ query }: { query: string }) {
+  // Using the real useReaderSearch hook
+  const { loading, results } = useSearch(query);
+  const { goTo } = useBookNavigator()
+  
+  // Handle click on a search result to navigate to that location
+  const handleResultClick = async (result: any) => {
+    await goTo(result.href)
+  };
+
+  if (!results) return null;
+
+  return (
+    <div className="search-results">
+      {loading ? (
+        <div className="search-loading">Searching...</div>
+      ) : results.length > 0 ? (
+        <div className="search-results-list">
+          <div className="search-results-header">
+            Found {results.length} result{results.length !== 1 ? 's' : ''}
+          </div>
+          {results.map((result: any, index: number) => (
+            <div 
+              key={index} 
+              className="search-result-item"
+              onClick={() => handleResultClick(result)}
+            >
+              {result.label || result}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="search-no-results">No results found</div>
+      )}
+    </div>
+  );
+}
+
+// Table of Contents component to display the book's table of contents
+interface TableOfContentsProps {
+  toc: Array<{
+    label: string;
+    href: string;
+    subitems?: Array<{
+      label: string;
+      href: string;
+      subitems?: any;
+    }> | null;
+  }>;
+}
+
+function TableOfContents({ toc }: TableOfContentsProps) {
+  const { goTo } = useBookNavigator();
+  
+  // Handle click on a TOC item to navigate to that location
+  const handleTOCItemClick = async (href: string) => {
+    await goTo(href);
+  };
+
+  // Recursive function to render TOC items with their subitems
+  const renderTOCItems = (items: TableOfContentsProps['toc']) => {
+    if (!items || items.length === 0) return null;
+    
+    return (
+      <ul className="toc-list">
+        {items.map((item, index) => (
+          <li key={index} className="toc-item">
+            <div 
+              className="toc-item-label"
+              onClick={() => handleTOCItemClick(item.href)}
+            >
+              {item.label}
+            </div>
+            {item.subitems && renderTOCItems(item.subitems)}
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
+  return (
+    <div className="table-of-contents">
+      {renderTOCItems(toc)}
     </div>
   );
 }

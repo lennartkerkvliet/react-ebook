@@ -25,17 +25,42 @@ const ReaderContext = React.createContext<ReaderContextType | null>(null)
 
 function useReader() {
     const context = React.useContext(ReaderContext)
-    if (!context) throw new Error("useReader must be used within a <Reader />")
+    if (!context) {
+        throw new Error("useReader must be used within a <Reader />")
+    }
     return context
   }
 
 interface ReaderProps {
     book: Book
+    progress?: number
+    onProgressChange?: (progress: number) => void
     children: React.ReactNode
 }
 
-function Reader({ book, children }: ReaderProps) {
+function Reader({ book, progress, onProgressChange, children }: ReaderProps) {
     const viewRef = React.useRef<FoliateView>(null)
+    const [currentProgress, setCurrentProgress] = React.useState(0)
+
+    React.useEffect(() => {
+        if (progress !== currentProgress) {
+            viewRef.current?.goToFraction(progress)
+        }
+    }, [progress, currentProgress, viewRef])
+
+    React.useEffect(() => {
+        const handleRelocate = (event: any) => {
+            const progress = event.detail.fraction
+            setCurrentProgress(progress)
+            onProgressChange?.(progress)
+        }
+
+        viewRef.current?.addEventListener('relocate', handleRelocate)
+
+        return () => {
+            viewRef.current?.removeEventListener('relocate', handleRelocate)
+        }
+    }, [onProgressChange, viewRef])
 
     async function next(distance?: number) {
         await viewRef.current?.next(distance)
@@ -138,9 +163,69 @@ function ReaderPrevious({ children, ...props }: Omit<React.ComponentProps<"butto
         <button onClick={() => previous()} {...props}>{children}</button>
     )   
 }
+
+function useBookNavigator() {
+    const { viewRef, next, previous } = useReader()
+
+    return {
+        goTo: async (target: string) => await viewRef.current?.goTo(target),
+        next: async (distance?: number) => await next(distance),
+        previous: async (distance?: number) => await previous(distance),
+    }
+}
+
+function useSearch(query?: string) {
+    const { viewRef } = useReader()
+    const [loading, setLoading] = React.useState(false)
+    const [results, setResults] = React.useState<string[] | undefined>()
+
+    React.useEffect(() => {
+        if (!viewRef.current) return
+        
+        if (query) {
+            setLoading(true)
+            setResults([])
+            
+            const abortController = new AbortController()
+            const searchResults: string[] = []
+            const searchIterator = viewRef.current.search({ query })
+            
+            const processSearchResults = async () => {
+                for await (const result of searchIterator) {
+                    if (abortController.signal.aborted) return
+                    if (result === 'done') {
+                        setLoading(false)
+                        break
+                    }
+                    
+                    if ('label' in result && typeof result.label === 'string') {
+                        searchResults.push(result.label)
+                        setResults([...searchResults])
+                    }
+                }
+            }
+            
+            processSearchResults()
+            
+            return () => {
+                abortController.abort()
+                setLoading(false)
+            }
+        } else {
+            viewRef.current.clearSearch()
+            setResults(undefined)
+            setLoading(false)
+        }
+    }, [query, viewRef])
+
+    return { loading, results }
+}
+
 export {
     Reader,
     ReaderContent,
     ReaderNext,
-    ReaderPrevious
+    ReaderPrevious,
+    useSearch,
+    useBookNavigator
 };
