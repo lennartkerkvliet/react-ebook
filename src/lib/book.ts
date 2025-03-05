@@ -5,7 +5,13 @@ export interface TableOfContentsItem {
   type?: string[]
 }
 
-type Entity = { name: string, sortAs?: string, role?: string } | string
+type EPUBEntity = { 
+  name: string, 
+  sortAs?: string, 
+  role?: string, 
+  code?: string, 
+  scheme?: string 
+}
 
 export interface Book {
   metadata?: {
@@ -13,13 +19,12 @@ export interface Book {
     title?: string
     language?: string[] | string
     description?: string
-    author?: Entity[]
-    translator?: Entity[]
-    contributor?: Entity[]
-    publisher?: Entity | null
+    author?: string[] | EPUBEntity[]
+    translator?: string[] | EPUBEntity[]
+    contributor?: string[] | EPUBEntity[]
+    publisher?: string | EPUBEntity | null
     published?: string
     modified?: string
-    subject?: string[]
   }
   toc: TableOfContentsItem[]
   pageList?: TableOfContentsItem[]
