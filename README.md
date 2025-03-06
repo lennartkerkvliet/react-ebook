@@ -1,5 +1,7 @@
 # react-ebook
 
+[![NPM](https://img.shields.io/npm/v/react-ebookjs)](https://www.npmjs.com/package/react-ebookjs)
+
 A minimal, unstyled React component library for rendering and interacting with ebooks in web applications.
 
 ## Overview

@@ -4,31 +4,23 @@ import { TOCProgress } from "../vendor/foliate-js/progress.js"
 import * as CFI from '../vendor/foliate-js/epubcfi.js'
 import { Book } from "./book.js"
 
-export class Search {
-    private book: Book
-    private language: string
-    private tocProgress?: TOCProgress
 
-    constructor(book: Book, language: string, tocProgress?: TOCProgress) {
-        this.book = book
-        this.language = language
-        this.tocProgress = tocProgress
-    }
+function getCFI(book: Book, index: number, range?: any): string {
+    const baseCFI = book.sections?.[index]?.cfi ?? CFI.fake.fromIndex(index)
+    if (!range) return baseCFI
+    return CFI.joinIndir(baseCFI, CFI.fromRange(range))
+}
 
-    private getCFI(index: number, range?: any): string {
-        const baseCFI = this.book.sections?.[index]?.cfi ?? CFI.fake.fromIndex(index)
-        if (!range) return baseCFI
-        return CFI.joinIndir(baseCFI, CFI.fromRange(range))
-    }
-
-    private async * searchSection(matcher: any, query: string, index: number) {
-        const doc = await this.book.sections?.[index]?.createDocument()
+export function createSearcher(book: Book, language: string, tocProgress?: TOCProgress) {
+   
+    async function* searchSection(matcher: any, query: string, index: number) {
+        const doc = await book.sections?.[index]?.createDocument()
         for (const { range, excerpt } of matcher(doc, query))
-            yield { cfi: this.getCFI(index, range), excerpt }
+            yield { cfi: getCFI(book, index, range), excerpt }
     }
 
-    private async * searchBook(matcher: any, query: string) {
-        const { sections } = this.book
+    async function* searchBook(matcher: any, query: string) {
+        const { sections } = book
         if (!sections) return
 
         for (const [index, section] of sections.entries()) {
@@ -36,21 +28,22 @@ export class Search {
             
             const doc = await section.createDocument()
             const subitems = Array.from(matcher(doc, query), ({ range, excerpt }) =>
-                ({ cfi: this.getCFI(index, range), excerpt }))
+                ({ cfi: getCFI(book, index, range), excerpt }))
    
             if (subitems.length) yield { index, subitems }
         }
     }
-    async * search({ query, index }: { query: string, index?: number }) {
-        const matcher = searchMatcher(textWalker, { defaultLocale: this.language, query, index })
+
+    async function* search({ query, index }: { query: string, index?: number }) {
+        const matcher = searchMatcher(textWalker, { defaultLocale: language, query, index })
         const iter = index != null
-            ? this.searchSection(matcher, query, index)
-            : this.searchBook(matcher, query)
+            ? searchSection(matcher, query, index)
+            : searchBook(matcher, query)
     
         for await (const result of iter) {
             if ("subitems" in result && result.subitems) {
                 yield {
-                    label: this.tocProgress?.getProgress(result.index)?.label ?? '',
+                    label: tocProgress?.getProgress(result.index)?.label ?? '',
                     subitems: result.subitems,
                 }
             }
@@ -60,4 +53,6 @@ export class Search {
         }
         yield 'done'
     }
+
+    return search
 }

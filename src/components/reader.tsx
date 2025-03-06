@@ -5,7 +5,7 @@ import * as CFI from '../vendor/foliate-js/epubcfi.js'
 import { Book } from "../lib/book.js";
 import { languageInfo } from "../lib/language.js";
 import { SectionProgress, TOCProgress } from "../vendor/foliate-js/progress.js";
-import { Search } from "../lib/search.js";
+import { createSearcher } from "../lib/search.js";
 import { Overlayer } from "../vendor/foliate-js/overlayer.js";
 import { Paginator } from "../vendor/foliate-js/paginator.js";
 import { FixedLayout } from "../vendor/foliate-js/fixed-layout.js";
@@ -272,8 +272,8 @@ function useSearch(query?: string) {
             const abortController = new AbortController()
             const searchResults: { label: string, href: string }[] = []
             const language = languageInfo(book)?.canonical ?? 'en'
-            const search = new Search(book, language, tocProgress)
-            const searchIterator = search.search({ query })
+            const search = createSearcher(book, language, tocProgress)
+            const searchIterator = search({ query })
             
             function addAnnotation(cfi: string) {
                 const resolved = resolveNavigation(cfi)
