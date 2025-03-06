@@ -36,7 +36,7 @@ export function createSearcher(book: Book, language: string, tocProgress?: TOCPr
 
     async function* search({ query, index }: { query: string, index?: number }) {
         const matcher = searchMatcher(textWalker, { defaultLocale: language, query, index })
-        const iter = index != null
+        const iter = index !== undefined
             ? searchSection(matcher, query, index)
             : searchBook(matcher, query)
     

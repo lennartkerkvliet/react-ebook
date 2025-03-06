@@ -7,6 +7,8 @@ export {
     ReaderContent, 
     ReaderNext,
     ReaderPrevious,
-    useBookNavigator,
-    useSearch
 } from './components/reader';
+
+export { useBookNavigator } from './hooks/useBookNavigation';
+
+export { useSearch } from './hooks/useSearch';
