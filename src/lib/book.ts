@@ -5,6 +5,14 @@ export interface TableOfContentsItem {
   type?: string[]
 }
 
+export interface Section {
+  id?: string
+  linear?: string
+  cfi?: string
+  createDocument: () => Promise<any>
+}
+
+type ResolveIndex = { index: number, anchor?: (doc: any) => any }
 type EPUBEntity = { 
   name: string, 
   sortAs?: string, 
@@ -32,6 +40,11 @@ export interface Book {
   rendition?: {
     layout?: string
   }
+  sections?: Array<Section | null>
   dir?: string
   getCover?: () => Promise<Blob | null>
+  resolveHref?: (href: string) => ResolveIndex | null
+  resolveCFI?: (cfi: string) => ResolveIndex
+  splitTOCHref?: (href: string) => string | string[]
+  getTOCFragment?: (href: string) => string
 }

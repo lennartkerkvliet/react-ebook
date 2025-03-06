@@ -1,22 +1,35 @@
 "use client"
 
 import * as React from "react";
+import * as CFI from '../vendor/foliate-js/epubcfi.js'
 import { Book } from "../lib/book.js";
-import { View as FoliateView } from "../vendor/foliate-js/view.js";
-import "../vendor/foliate-js/view.js";
+import { languageInfo } from "../lib/language.js";
+import { SectionProgress, TOCProgress } from "../vendor/foliate-js/progress.js";
+import { Search } from "../lib/search.js";
+import { Overlayer } from "../vendor/foliate-js/overlayer.js";
+import { Paginator } from "../vendor/foliate-js/paginator.js";
+import { FixedLayout } from "../vendor/foliate-js/fixed-layout.js";
+import "../vendor/foliate-js/paginator.js";
+import "../vendor/foliate-js/fixed-layout.js";
+
 
 declare module "react" {
     namespace JSX {
       interface IntrinsicElements {
-        'foliate-view': React.DetailedHTMLProps<React.HTMLAttributes<FoliateView>, FoliateView>;
+        'foliate-paginator': React.DetailedHTMLProps<React.HTMLAttributes<Paginator>, Paginator>;
+        'foliate-fixed-layout': React.DetailedHTMLProps<React.HTMLAttributes<FixedLayout>, FixedLayout>;
       }
     }
 }
 
 interface ReaderContextType {
     book: Book
-    viewRef: React.RefObject<FoliateView | null>;
+    sectionProgress: SectionProgress
+    tocProgress?: TOCProgress
+    rendererRef: React.RefObject<Paginator | FixedLayout | null>;
     
+    goTo: (target: number | string | { fraction: number }) => Promise<void>;
+    resolveNavigation: (target: number | string | { fraction: number }) => { index: number, anchor?: number | ((doc: any) => any) } | undefined;
     next: (distance?: number) => Promise<void>;
     previous: (distance?: number) => Promise<void>;
 }
@@ -39,39 +52,83 @@ interface ReaderProps {
 }
 
 function Reader({ book, progress, onProgressChange, children }: ReaderProps) {
-    const viewRef = React.useRef<FoliateView>(null)
+    const rendererRef = React.useRef<Paginator | FixedLayout>(null)
+    const sectionProgress = React.useMemo(() => new SectionProgress(book.sections, 1500, 1600), [book])
+    const [tocProgress, setTocProgress] = React.useState<TOCProgress | undefined>()
     const [currentProgress, setCurrentProgress] = React.useState(0)
 
-    React.useEffect(() => {
-        if (progress !== currentProgress) {
-            viewRef.current?.goToFraction(progress)
+    const resolveNavigation = (target: number | string | { fraction: number }) => {
+        if (typeof target === 'number') {
+            return { index: target }
+        } else if (typeof target === 'object') {
+            const [index, anchor] = sectionProgress.getSection(target.fraction)
+            return { index, anchor }
+        } else if (CFI.isCFI.test(target)) {
+            if (book.resolveCFI) {
+                return book.resolveCFI(target)
+            } else {
+                const parts = CFI.parse(target)
+                const index = CFI.fake.toIndex((parts.parent ?? parts).shift())
+                const anchor = (doc: any) => CFI.toRange(doc, parts)
+                return { index, anchor }
+            }
+        } else {
+            const href = book.resolveHref?.(target)
+            if (href === null) return
+            return href
         }
-    }, [progress, currentProgress, viewRef])
+    }
+
+    async function goTo(target: number | string | { fraction: number }) {
+        const resolved = resolveNavigation(target)
+        if (resolved) {
+            await rendererRef.current?.goTo(resolved)
+        }
+    }
+    
+    React.useEffect(() => {
+        if (book.splitTOCHref && book.getTOCFragment) {
+            const ids = book.sections?.map(s => s?.id)
+            const splitHref = book.splitTOCHref.bind(book)
+            const getFragment = book.getTOCFragment.bind(book)
+
+            const tocProgress = new TOCProgress()
+            tocProgress.init({ toc: book.toc, ids, splitHref, getFragment })
+            setTocProgress(tocProgress)
+        }
+    }, [book])
+
+    React.useEffect(() => {
+        if (progress !== currentProgress && progress !== undefined) {
+            goTo({ fraction: progress })
+        }
+    }, [progress, currentProgress, rendererRef])
 
     React.useEffect(() => {
         const handleRelocate = (event: any) => {
-            const progress = event.detail.fraction
+            const { index, fraction, size } = event.detail
+            const { fraction: progress } = sectionProgress.getProgress(index, fraction, size)
             setCurrentProgress(progress)
             onProgressChange?.(progress)
         }
 
-        viewRef.current?.addEventListener('relocate', handleRelocate)
+        rendererRef.current?.addEventListener('relocate', handleRelocate)
 
         return () => {
-            viewRef.current?.removeEventListener('relocate', handleRelocate)
+            rendererRef.current?.removeEventListener('relocate', handleRelocate)
         }
-    }, [onProgressChange, viewRef])
+    }, [onProgressChange, rendererRef])
 
     async function next(distance?: number) {
-        await viewRef.current?.next(distance)
+        await rendererRef.current?.next(distance)
     }
 
     async function previous(distance?: number) {
-        await viewRef.current?.prev(distance)
+        await rendererRef.current?.prev(distance)
     }
 
     return (
-        <ReaderContext.Provider value={{ book, viewRef, next, previous }}>
+        <ReaderContext.Provider value={{ book, sectionProgress, tocProgress, rendererRef, goTo, resolveNavigation, next, previous }}>
             {children}
         </ReaderContext.Provider>
     )
@@ -92,27 +149,40 @@ function ReaderContent({
     hyphenate = true,
     flow = "paginated"
 }: ReaderContentProps) {
-    const { book, viewRef } = useReader()
+    const { book, rendererRef } = useReader()
+    const info = languageInfo(book)
 
     React.useEffect(() => {
-        const view = viewRef.current
-        if (!view) return
+        const renderer = rendererRef.current
+        if (renderer) {
+            const createOverlayer = (e: any) => {
+                const overlayer = new Overlayer()
+                const { index, doc, attach } = e.detail
 
-        const openBook = async (book: Book) => {
-            await view.open(book)
-            await view.init({ 
-                lastLocation: null, 
-                showTextStart: true 
-            })
-        }
+                doc.addEventListener('click', (e: MouseEvent) => {
+                    const [value, range] = overlayer.hitTest(e)
+                    if (value && range) {
+                        // TODO: Add annotation click handler
+                        console.log(value, range, index)
+                    }
+                })
+                attach(overlayer)
+            }
 
-        if (view.book !== book) {
-            openBook(book)
+            renderer.addEventListener('create-overlayer', createOverlayer)
+            renderer.setAttribute('exportparts', 'head,foot,filter')
+            renderer.open(book)
+            renderer.next()
+
+            return () => {
+                renderer.removeEventListener('create-overlayer', createOverlayer)
+            }
         }
-    }, [book, viewRef])
+    }, [book, rendererRef])
+
     
     React.useEffect(() => {
-        if (!viewRef.current) return;
+        if (!rendererRef.current) return;
 
         const css = `
             @namespace epub "http://www.idpf.org/2007/ops";
@@ -137,15 +207,20 @@ function ReaderContent({
             [align="justify"] { text-align: justify; }
         `;
 
-        // @ts-ignore
-        viewRef.current.renderer?.setStyles?.(css)
-        viewRef.current.renderer?.setAttribute('flow', flow)
+        rendererRef.current.setAttribute('flow', flow)
+        if (rendererRef.current instanceof Paginator) {
+            rendererRef.current.setStyles(css)
+        }
+    }, [fontSize, lineSpacing, justify, hyphenate, flow])
 
-    }, [fontSize, lineSpacing, justify, hyphenate, flow, viewRef])
+    const isFixedLayout = book.rendition?.layout === 'pre-paginated'
+    const Renderer = isFixedLayout ? "foliate-fixed-layout" : "foliate-paginator"
 
-    return (
-        <foliate-view ref={viewRef} />
-    )
+    return <Renderer 
+        dir={info?.direction} 
+        lang={info?.canonical} 
+        ref={rendererRef as any} 
+    />
 }
 
 function ReaderNext({ children, ...props }: Omit<React.ComponentProps<"button">, "onClick">) {
@@ -165,31 +240,56 @@ function ReaderPrevious({ children, ...props }: Omit<React.ComponentProps<"butto
 }
 
 function useBookNavigator() {
-    const { viewRef, next, previous } = useReader()
-
-    return {
-        goTo: async (target: string) => await viewRef.current?.goTo(target),
-        next: async (distance?: number) => await next(distance),
-        previous: async (distance?: number) => await previous(distance),
-    }
+    const { goTo, next, previous } = useReader()
+    return { goTo, next, previous }
 }
 
 function useSearch(query?: string) {
-    const { viewRef } = useReader()
+    const { book, tocProgress, rendererRef, resolveNavigation } = useReader()
     const [loading, setLoading] = React.useState(false)
-    const [results, setResults] = React.useState<string[] | undefined>()
+    const [results, setResults] = React.useState<{ label: string, href: string }[]>()
+    const [annotations, setAnnotations] = React.useState<string[]>([])
 
     React.useEffect(() => {
-        if (!viewRef.current) return
+        if (!rendererRef.current) return
         
+        for (const cfi of annotations) {
+            const content = rendererRef.current?.getContents()
+            for (const item of content) {
+                if ("overlayer" in item) {
+                    const { overlayer } = item
+                    overlayer.remove(cfi)
+                }
+            }
+        }
+
+        setResults(undefined)
+        setAnnotations([])
+
         if (query) {
             setLoading(true)
-            setResults([])
             
             const abortController = new AbortController()
-            const searchResults: string[] = []
-            const searchIterator = viewRef.current.search({ query })
+            const searchResults: { label: string, href: string }[] = []
+            const language = languageInfo(book)?.canonical ?? 'en'
+            const search = new Search(book, language, tocProgress)
+            const searchIterator = search.search({ query })
             
+            function addAnnotation(cfi: string) {
+                const resolved = resolveNavigation(cfi)
+                if (resolved) {
+                    const content = rendererRef.current?.getContents()
+                        .find((x: any) => x.index === resolved.index && x.overlayer)
+
+                    if (content && "overlayer" in content) {
+                        const { overlayer, doc } = content
+                        const range = doc && typeof resolved.anchor === 'function' ? resolved.anchor(doc) : resolved.anchor
+                        overlayer.add(cfi, range, Overlayer.outline)
+                        setAnnotations((prev) => [...prev, cfi])
+                    }
+                }
+            }
+
             const processSearchResults = async () => {
                 for await (const result of searchIterator) {
                     if (abortController.signal.aborted) return
@@ -199,8 +299,14 @@ function useSearch(query?: string) {
                     }
                     
                     if ('label' in result && typeof result.label === 'string') {
-                        searchResults.push(result.label)
+                        searchResults.push({ label: result.label, href: result.subitems[0].cfi })
                         setResults([...searchResults])
+
+                        for (const item of result.subitems) {
+                            addAnnotation(item.cfi)
+                        }
+                    } else if ('cfi' in result && typeof result.cfi === 'string') {
+                        addAnnotation(result.cfi)
                     }
                 }
             }
@@ -212,11 +318,9 @@ function useSearch(query?: string) {
                 setLoading(false)
             }
         } else {
-            viewRef.current.clearSearch()
-            setResults(undefined)
             setLoading(false)
         }
-    }, [query, viewRef])
+    }, [query, rendererRef])
 
     return { loading, results }
 }
