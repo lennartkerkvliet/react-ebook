@@ -16,7 +16,7 @@ declare module "react" {
     namespace JSX {
       interface IntrinsicElements {
         'foliate-paginator': React.DetailedHTMLProps<React.HTMLAttributes<Paginator>, Paginator>;
-        'foliate-fixed-layout': React.DetailedHTMLProps<React.HTMLAttributes<FixedLayout>, FixedLayout>;
+        'foliate-fxl': React.DetailedHTMLProps<React.HTMLAttributes<FixedLayout>, FixedLayout>;
       }
     }
 }
@@ -87,7 +87,7 @@ function Reader({ book, progress, onProgressChange, children }: ReaderProps) {
     const [currentProgress, setCurrentProgress] = React.useState(0)
     const [annotations, setAnnotations] = React.useState<string[]>([])
 
-    function addAnnotation(cfi: string) {
+    const addAnnotation = React.useCallback((cfi: string) => {
         const resolved = resolveNavigation(book, cfi, sectionProgress)
         if (resolved) {
             const content = rendererRef.current?.getContents()
@@ -98,12 +98,12 @@ function Reader({ book, progress, onProgressChange, children }: ReaderProps) {
                 const range = doc && typeof resolved.anchor === 'function' ? resolved.anchor(doc) : resolved.anchor
                 overlayer.add(cfi, range, Overlayer.outline)
             }
-            
+
             setAnnotations((prev) => [...prev, cfi])
         }
-    }
+    }, [book, sectionProgress, rendererRef])
 
-    function removeAnnotation(cfi: string) {
+    const removeAnnotation = React.useCallback((cfi: string) => {
         const content = rendererRef.current?.getContents()
         if (!content) return
 
@@ -114,20 +114,20 @@ function Reader({ book, progress, onProgressChange, children }: ReaderProps) {
             }
         }
         setAnnotations((prev) => prev.filter((x) => x !== cfi))
-    }
+    }, [rendererRef])
 
-    function clearAnnotations() {
+    const clearAnnotations = React.useCallback(() => {
         for (const cfi of annotations) {
             removeAnnotation(cfi)
         }
-    }
-    
-    async function goTo(target: number | string | { fraction: number }) {
+    }, [annotations, removeAnnotation])
+
+    const goTo = React.useCallback(async (target: number | string | { fraction: number }) => {
         const resolved = resolveNavigation(book, target, sectionProgress)
         if (resolved) {
             await rendererRef.current?.goTo(resolved)
         }
-    }
+    }, [book, sectionProgress])
     
     React.useEffect(() => {
         if (book.splitTOCHref && book.getTOCFragment) {
@@ -204,7 +204,7 @@ function ReaderContent({
     hyphenate = true,
     flow = "paginated"
 }: ReaderContentProps) {
-    const { book, rendererRef, annotations, sectionProgress } = useReader()
+    const { book, rendererRef, annotations, sectionProgress, goTo } = useReader()
     const info = languageInfo(book)
 
     React.useEffect(() => {
@@ -235,16 +235,37 @@ function ReaderContent({
                 attach(overlayer)
             }
 
+            const onLoad = (e: any) => {
+                const { doc, index } = e.detail
+                const section = book.sections?.[index]
+
+                doc.addEventListener('click', (e: any) => {
+                    const a = e.target.closest('a[href]')
+                    if (!a) return
+                    
+                    e.preventDefault()
+                    const hrefAttr = a.getAttribute('href')
+                    const href = section?.resolveHref?.(hrefAttr) ?? hrefAttr
+                    if (book?.isExternal?.(href)) {
+                        globalThis.open(href, '_blank')
+                    } else {
+                        goTo(href)
+                    }
+                })
+            }
+
             renderer.addEventListener('create-overlayer', createOverlayer)
+            renderer.addEventListener('load', onLoad)
             renderer.setAttribute('exportparts', 'head,foot,filter')
             renderer.open(book)
             renderer.next()
 
             return () => {
                 renderer.removeEventListener('create-overlayer', createOverlayer)
+                renderer.removeEventListener('load', onLoad)
             }
         }
-    }, [book, rendererRef, annotations])
+    }, [book, rendererRef, annotations, goTo])
     
     React.useEffect(() => {
         if (!rendererRef.current) return;
@@ -279,7 +300,7 @@ function ReaderContent({
     }, [fontSize, lineSpacing, justify, hyphenate, flow])
 
     const isFixedLayout = book.rendition?.layout === 'pre-paginated'
-    const Renderer = isFixedLayout ? "foliate-fixed-layout" : "foliate-paginator"
+    const Renderer = isFixedLayout ? "foliate-fxl" : "foliate-paginator"
 
     return <Renderer 
         dir={info?.direction} 

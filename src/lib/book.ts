@@ -10,6 +10,7 @@ export interface Section {
   linear?: string
   cfi?: string
   createDocument: () => Promise<any>
+  resolveHref?: (href: string) => string | null
 }
 
 type ResolveIndex = { index: number, anchor?: (doc: any) => any }
@@ -47,4 +48,5 @@ export interface Book {
   resolveCFI?: (cfi: string) => ResolveIndex
   splitTOCHref?: (href: string) => string | string[]
   getTOCFragment?: (href: string) => string
+  isExternal?: (href: string) => boolean
 }
